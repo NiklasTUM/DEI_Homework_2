@@ -38,7 +38,7 @@ class CNN(nn.Module):
         self.relu2 = nn.ReLU()
         
         # Fully connected layers
-        self.fc1 = nn.Linear(16 * 6 * 6, 320)  # Adjust the input size based on the output of the second block
+        self.fc1 = nn.Linear(16 * 6 * 6, 320)  # 28 -> 14 -> 6
         self.relu3 = nn.ReLU()
         self.drop = nn.Dropout(p=dropout_prob)
         self.fc2 = nn.Linear(320, 120)
