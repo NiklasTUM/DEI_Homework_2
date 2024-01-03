@@ -22,29 +22,20 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
         self.no_maxpool = no_maxpool
 
-        # Define conv1 and conv2 layers based on whether max-pooling is used
         if not self.no_maxpool:
-            # Original definition
             self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, stride=1, padding=1)
             self.conv2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=0)
         else:
-            # New definition without max-pooling
             self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, stride=2, padding=1)
             self.conv2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=2, padding=0)
 
-        # Max pooling layer
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        # Calculate the flattened feature dimension after convolutions and potential pooling
-        # You need to calculate this based on your input image size and convolutional layer parameters
         flattened_feature_dim = 16 * 6 * 6  # Adjust this based on your input image size
 
-        # Fully connected layers
         self.fc1 = nn.Linear(flattened_feature_dim, 320)
         self.fc2 = nn.Linear(320, 120)
         self.fc3 = nn.Linear(120, num_classes)
 
-        # Dropout
         self.drop = nn.Dropout(p=dropout_prob)
 
     def forward(self, x):
@@ -55,10 +46,8 @@ class CNN(nn.Module):
         x = F.relu(self.conv2(x))
         x = self.pool(x) if not self.no_maxpool else x
 
-        # Flatten the tensor
-        x = x.view(-1, 16 * 6 * 6)  # Adjust this based on your actual flattened feature dimension
+        x = x.view(-1, 16 * 6 * 6)
 
-        # Fully connected layers with ReLU and Dropout
         x = F.relu(self.fc1(x))
         x = self.drop(x)
         x = F.relu(self.fc2(x))
