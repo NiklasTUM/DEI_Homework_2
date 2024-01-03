@@ -15,49 +15,59 @@ import numpy as np
 
 import utils
 
+
 class CNN(nn.Module):
-    
-    def __init__(self, dropout_prob, no_maxpool=False):
+
+    def __init__(self, dropout_prob, num_classes, no_maxpool=False):
         super(CNN, self).__init__()
         self.no_maxpool = no_maxpool
-        if not no_maxpool:
-            # Implementation for Q2.1
-            raise NotImplementedError
+
+        # Define conv1 and conv2 layers based on whether max-pooling is used
+        if not self.no_maxpool:
+            # Original definition
+            self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, stride=1, padding=1)
+            self.conv2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=0)
         else:
-            # Implementation for Q2.2
-            raise NotImplementedError
-        
-        # Implementation for Q2.1 and Q2.2
-        raise NotImplementedError
-        
+            # New definition without max-pooling
+            self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, stride=2, padding=1)
+            self.conv2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=2, padding=0)
+
+        # Max pooling layer
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # Calculate the flattened feature dimension after convolutions and potential pooling
+        # You need to calculate this based on your input image size and convolutional layer parameters
+        flattened_feature_dim = 16 * 6 * 6  # Adjust this based on your input image size
+
+        # Fully connected layers
+        self.fc1 = nn.Linear(flattened_feature_dim, 320)
+        self.fc2 = nn.Linear(320, 120)
+        self.fc3 = nn.Linear(120, num_classes)
+
+        # Dropout
+        self.drop = nn.Dropout(p=dropout_prob)
+
     def forward(self, x):
-        # input should be of shape [b, c, w, h]
-        # conv and relu layers
+        x = x.view(x.size(0), 1, 28, 28)
 
-        # max-pool layer if using it
-        if not self.no_maxpool:
-            raise NotImplementedError
-        
-        # conv and relu layers
-        
+        x = F.relu(self.conv1(x))
+        x = self.pool(x) if not self.no_maxpool else x
+        x = F.relu(self.conv2(x))
+        x = self.pool(x) if not self.no_maxpool else x
 
-        # max-pool layer if using it
-        if not self.no_maxpool:
-            raise NotImplementedError
-        
-        # prep for fully connected layer + relu
-        
-        # drop out
+        # Flatten the tensor
+        x = x.view(-1, 16 * 6 * 6)  # Adjust this based on your actual flattened feature dimension
+
+        # Fully connected layers with ReLU and Dropout
+        x = F.relu(self.fc1(x))
         x = self.drop(x)
-
-        # second fully connected layer + relu
-        
-        # last fully connected layer
+        x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        
-        return F.log_softmax(x,dim=1)
 
-def train_batch(X, y, model, optimizer, criterion, **kwargs):
+        return F.log_softmax(x, dim=1)
+
+
+def train_batch(X, y, model, optimizer, criterion, device, **kwargs):
     """
     X (n_examples x n_features)
     y (n_examples): gold labels
@@ -65,6 +75,7 @@ def train_batch(X, y, model, optimizer, criterion, **kwargs):
     optimizer: optimizer used in gradient step
     criterion: loss function
     """
+    X, y = X.to(device), y.to(device)
     optimizer.zero_grad()
     out = model(X, **kwargs)
     loss = criterion(out, y)
@@ -80,11 +91,13 @@ def predict(model, X):
     return predicted_labels
 
 
-def evaluate(model, X, y):
+def evaluate(model, X, y, device):
     """
     X (n_examples x n_features)
     y (n_examples): gold labels
     """
+
+    X, y = X.to(device), y.to(device)
     model.eval()
     y_hat = predict(model, X)
     n_correct = (y == y_hat).sum().item()
@@ -102,13 +115,15 @@ def plot(epochs, plottable, ylabel='', name=''):
 
 
 def get_number_trainable_params(model):
-    ## TO IMPLEMENT - REPLACE return 0
-    return 0
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 
 def main():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('-epochs', default=20, type=int,
+    parser.add_argument('-epochs', default=15, type=int,
                         help="""Number of epochs to train for. You should not
                         need to change this value for your plots.""")
     parser.add_argument('-batch_size', default=8, type=int,
@@ -119,9 +134,9 @@ def main():
     parser.add_argument('-dropout', type=float, default=0.7)
     parser.add_argument('-optimizer',
                         choices=['sgd', 'adam'], default='sgd')
-    parser.add_argument('-no_maxpool', action='store_true')
-    
-    opt = parser.parse_args()
+    parser.add_argument('-no_maxpool', action='store_false')
+
+    opt, unknown = parser.parse_known_args()
 
     utils.configure_seed(seed=42)
 
@@ -133,8 +148,8 @@ def main():
     test_X, test_y = dataset.test_X, dataset.test_y
 
     # initialize the model
-    model = CNN(opt.dropout, no_maxpool=opt.no_maxpool)
-    
+    model = CNN(opt.dropout, 4, no_maxpool=opt.no_maxpool).to(device)
+
     # get an optimizer
     optims = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
 
@@ -142,10 +157,10 @@ def main():
     optimizer = optim_cls(
         model.parameters(), lr=opt.learning_rate, weight_decay=opt.l2_decay
     )
-    
+
     # get a loss criterion
     criterion = nn.NLLLoss()
-    
+
     # training loop
     epochs = np.arange(1, opt.epochs + 1)
     train_mean_losses = []
@@ -155,24 +170,23 @@ def main():
         print('Training epoch {}'.format(ii))
         for X_batch, y_batch in train_dataloader:
             loss = train_batch(
-                X_batch, y_batch, model, optimizer, criterion)
+                X_batch, y_batch, model, optimizer, criterion, device)
             train_losses.append(loss)
 
         mean_loss = torch.tensor(train_losses).mean().item()
         print('Training loss: %.4f' % (mean_loss))
 
         train_mean_losses.append(mean_loss)
-        valid_accs.append(evaluate(model, dev_X, dev_y))
+        valid_accs.append(evaluate(model, dev_X, dev_y, device))
         print('Valid acc: %.4f' % (valid_accs[-1]))
 
-    print('Final Test acc: %.4f' % (evaluate(model, test_X, test_y)))
+    print('Final Test acc: %.4f' % (evaluate(model, test_X.to(device), test_y.to(device), device)))
     # plot
     config = "{}-{}-{}-{}-{}".format(opt.learning_rate, opt.dropout, opt.l2_decay, opt.optimizer, opt.no_maxpool)
 
     plot(epochs, train_mean_losses, ylabel='Loss', name='CNN-training-loss-{}'.format(config))
     plot(epochs, valid_accs, ylabel='Accuracy', name='CNN-validation-accuracy-{}'.format(config))
-    
     print('Number of trainable parameters: ', get_number_trainable_params(model))
 
-if __name__ == '__main__':
-    main()
+main()
+
